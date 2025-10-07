@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:image_picker/image_picker.dart';
 import '../cubits/user_cubit.dart';
+import 'availability_screen.dart';
 
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
@@ -22,160 +23,226 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       source: ImageSource.gallery,
       maxWidth: 1200,
       maxHeight: 1200,
-      imageQuality: 80,
+      imageQuality: 85,
     );
     if (file != null) setState(() => _pickedImage = file);
   }
 
   void _submit() {
-    final name = _nameController.text;
+    final name = _nameController.text.trim();
+    if (name.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter your full name')),
+      );
+      return;
+    }
     context.read<UserCubit>().createUser(name: name, image: _pickedImage);
   }
 
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
-    final isWide = size.width > 600; // web/tablet breakpoint
+    final isWide = size.width > 700;
     final double cardWidth = isWide ? size.width * 0.4 : size.width * 0.9;
-    final double avatarSize = isWide ? 72 : 48;
+    final double avatarSize = isWide ? 80 : 60;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FB),
       appBar: AppBar(
-        title: const Text('Welcome — Onboarding'),
+        title: const Text(
+          'Create Profile',
+          style: TextStyle(fontWeight: FontWeight.w600),
+        ),
         centerTitle: true,
-        elevation: 0,
+        elevation: 1,
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black87,
       ),
+      backgroundColor: const Color(0xFFF7F8FA),
       body: Center(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+          padding: const EdgeInsets.all(24),
           child: ConstrainedBox(
             constraints: BoxConstraints(maxWidth: cardWidth),
-            child: Card(
-              elevation: 3,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              child: Padding(
-                padding: const EdgeInsets.all(24.0),
-                child: BlocConsumer<UserCubit, UserState>(
-                  listener: (context, state) {
-                    if (state is UserCreated) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('User created successfully')),
-                      );
-                      // Example: Navigate to home page or availability page
-                    } else if (state is UserError) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Error: ${state.message}')),
-                      );
-                    }
-                  },
-                  builder: (context, state) {
-                    final loading = state is UserLoading;
-                    return Column(
-                      mainAxisSize: MainAxisSize.min,
+            child: BlocConsumer<UserCubit, UserState>(
+              listener: (context, state) {
+                if (state is UserCreated) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                        content: Text('Profile created successfully')),
+                  );
+
+                  // Navigate to Availability page
+                  Future.delayed(const Duration(milliseconds: 500), () {
+                    Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => const AvailabilityScreen()),
+                    );
+                  });
+                } else if (state is UserError) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Error: ${state.message}')),
+                  );
+                }
+              },
+              builder: (context, state) {
+                final loading = state is UserLoading;
+                return Card(
+                  elevation: 3,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(24.0),
+                    child: Column(
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
+                        const SizedBox(height: 12),
                         Text(
-                          'Create Your Profile',
-                          style: TextStyle(
-                            fontSize: isWide ? 26 : 22,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 20),
-
-                        // Avatar Picker
-                        GestureDetector(
-                          onTap: _pickImage,
-                          child: _pickedImage == null
-                              ? CircleAvatar(
-                                  radius: avatarSize,
-                                  backgroundColor: Colors.indigo.shade50,
-                                  child: Icon(Icons.add_a_photo,
-                                      size: avatarSize * 0.8,
-                                      color: Colors.indigo),
-                                )
-                              : kIsWeb
-                                  ? ClipOval(
-                                      child: Image.network(
-                                        _pickedImage!.path,
-                                        width: avatarSize * 2,
-                                        height: avatarSize * 2,
-                                        fit: BoxFit.cover,
-                                      ),
-                                    )
-                                  : CircleAvatar(
-                                      radius: avatarSize,
-                                      backgroundImage:
-                                          FileImage(File(_pickedImage!.path)),
-                                    ),
-                        ),
-                        const SizedBox(height: 20),
-
-                        // Name Input
-                        TextField(
-                          controller: _nameController,
+                          'Welcome to Team Scheduler',
                           textAlign: TextAlign.center,
-                          decoration: InputDecoration(
-                            hintText: 'Enter your full name',
-                            filled: true,
-                            fillColor: Colors.grey.shade100,
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide.none,
-                            ),
-                            contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 14),
-                          ),
+                          style: Theme.of(context)
+                              .textTheme
+                              .headlineSmall
+                              ?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.indigo.shade800,
+                              ),
                         ),
-
                         const SizedBox(height: 24),
 
-                        // Submit Button
+                        GestureDetector(
+                          onTap: _pickImage,
+                          child: Stack(
+                            alignment: Alignment.bottomRight,
+                            children: [
+                              _pickedImage == null
+                                  ? CircleAvatar(
+                                      radius: avatarSize,
+                                      backgroundColor: Colors.grey.shade200,
+                                      child: Icon(
+                                        Icons.person,
+                                        size: avatarSize,
+                                        color: Colors.grey.shade600,
+                                      ),
+                                    )
+                                  : kIsWeb
+                                      ? ClipOval(
+                                          child: Image.network(
+                                            _pickedImage!.path,
+                                            width: avatarSize * 2,
+                                            height: avatarSize * 2,
+                                            fit: BoxFit.cover,
+                                          ),
+                                        )
+                                      : CircleAvatar(
+                                          radius: avatarSize,
+                                          backgroundImage: FileImage(
+                                              File(_pickedImage!.path)),
+                                        ),
+                              Positioned(
+                                bottom: 4,
+                                right: 4,
+                                child: Container(
+                                  padding: const EdgeInsets.all(4),
+                                  decoration: const BoxDecoration(
+                                    color: Colors.white,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(
+                                    Icons.camera_alt,
+                                    size: 18,
+                                    color: Colors.indigo,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        const SizedBox(height: 32),
+                        TextField(
+                          controller: _nameController,
+                          decoration: InputDecoration(
+                            labelText: 'Full Name',
+                            prefixIcon: const Icon(Icons.person_outline),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            filled: true,
+                            fillColor: Colors.grey.shade50,
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+
                         SizedBox(
                           width: double.infinity,
-                          child: ElevatedButton.icon(
+                          child: ElevatedButton(
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.indigo,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              backgroundColor: Colors.indigo.shade600,
+                              padding:
+                                  const EdgeInsets.symmetric(vertical: 14),
                               shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12)),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
                             ),
                             onPressed: loading ? null : _submit,
-                            icon: const Icon(Icons.check),
-                            label: loading
-                                ? const Text('Creating...')
-                                : const Text('Create Account'),
+                            child: loading
+                                ? const SizedBox(
+                                    width: 22,
+                                    height: 22,
+                                    child: CircularProgressIndicator(
+                                      color: Colors.white,
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Text(
+                                    'Create Account',
+                                    style: TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                        color: Colors.white),
+                                  ),
                           ),
                         ),
 
                         const SizedBox(height: 20),
-
                         if (state is UserCreated)
                           Container(
+                            width: double.infinity,
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
                               color: Colors.green.shade50,
-                              borderRadius: BorderRadius.circular(8),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(
+                                color: Colors.green.shade200,
+                                width: 1,
+                              ),
                             ),
                             child: Text(
-                              'Created: ${state.userRow['name']}',
+                              'Profile created: ${state.userRow['name']}',
+                              textAlign: TextAlign.center,
                               style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.green),
+                                color: Colors.green,
+                                fontWeight: FontWeight.w500,
+                              ),
                             ),
                           ),
                         if (state is UserError)
-                          Text(
-                            'Error: ${state.message}',
-                            style: const TextStyle(color: Colors.red),
+                          Padding(
+                            padding: const EdgeInsets.only(top: 8.0),
+                            child: Text(
+                              'Error: ${state.message}',
+                              style: const TextStyle(
+                                color: Colors.red,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
                           ),
                       ],
-                    );
-                  },
-                ),
-              ),
+                    ),
+                  ),
+                );
+              },
             ),
           ),
         ),
