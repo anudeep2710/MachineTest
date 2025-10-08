@@ -6,22 +6,30 @@ import 'cubits/task_cubit.dart';
 import 'cubits/user_cubit.dart';
 import 'screens/onboarding_screen.dart';
 import 'screens/task_list_screen.dart';
+import 'config.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  if (!AppConfig.hasSupabaseConfig) {
+    runApp(const _ConfigErrorApp());
+    return;
+  }
+
   await Supabase.initialize(
-    url: 'https://kntrzuiotxxugvmkrbzm.supabase.co',
-    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtudHJ6dWlvdHh4dWd2bWtyYnptIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk4MTMwMzYsImV4cCI6MjA3NTM4OTAzNn0.nFZCTS5-_6GiS8sa-RhBnBwLOHuvLb8ROKJiZzX9AXc',
+    url: AppConfig.supabaseUrl,
+    anonKey: AppConfig.supabaseAnonKey,
   );
 
   runApp(MultiBlocProvider(
     providers: [
+      // UserCubit loads any existing user session on creation
       BlocProvider(create: (_) => UserCubit()),
       BlocProvider(create: (_) => AvailabilityCubit()),
       BlocProvider(create: (_) => TaskCubit()),
     ],
     child: const MyApp(),
-  ),);
+  ));
 }
 
 class MyApp extends StatelessWidget {
@@ -42,14 +50,54 @@ class MyApp extends StatelessWidget {
       ),
       home: BlocBuilder<UserCubit, UserState>(
         builder: (context, state) {
-          if (state is UserCreated) {
-            // User is authenticated, show task list
+          if (state is UserRestoring) {
+            return const _SplashScreen();
+          } else if (state is UserCreated) {
             return const TaskListScreen();
           } else {
-            // User is not authenticated, show onboarding
             return const OnboardingScreen();
           }
         },
+      ),
+    );
+  }
+}
+
+class _ConfigErrorApp extends StatelessWidget {
+  const _ConfigErrorApp();
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: Scaffold(
+        appBar: AppBar(title: const Text('Configuration Error')),
+        body: const Center(
+          child: Padding(
+            padding: EdgeInsets.all(16.0),
+            child: Text(
+              'Supabase configuration is missing.\n\n'
+              'Run with:\n'
+              'flutter run --dart-define=SUPABASE_URL=YOUR_URL --dart-define=SUPABASE_ANON_KEY=YOUR_KEY',
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SplashScreen extends StatelessWidget {
+  const _SplashScreen();
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      body: Center(
+        child: SizedBox(
+          width: 36,
+          height: 36,
+          child: CircularProgressIndicator(),
+        ),
       ),
     );
   }

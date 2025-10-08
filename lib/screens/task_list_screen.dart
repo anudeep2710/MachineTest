@@ -17,43 +17,60 @@ class TaskListScreen extends StatefulWidget {
 class _TaskListScreenState extends State<TaskListScreen> {
   String _filter = 'all';
   String? _userId;
+  bool _fetchedOnce = false;
+  final int _pageSize = 20;
+  int _offset = 0;
+  bool _isLoadingMore = false;
+  bool _hasMore = true;
+  List<Task> _tasks = [];
 
   @override
   void initState() {
     super.initState();
-    Future.delayed(const Duration(milliseconds: 300), () {
-      final userState = context.read<UserCubit>().state;
-      if (userState is UserCreated) {
-        _userId = userState.userRow['id'];
-        context.read<TaskCubit>().fetchTasks();
-      }
-    });
+    // Immediately read current user state to avoid missing initial emission
+    final current = context.read<UserCubit>().state;
+    if (current is UserCreated) {
+      _userId = current.userRow['id'];
+      _fetchedOnce = true;
+      _fetchTasks(reset: true);
+    }
   }
 
   void _applyFilter(String filter) {
     setState(() => _filter = filter);
-    if (_userId != null) {
-      switch (filter) {
-        case 'all':
-          context.read<TaskCubit>().fetchTasks();
-          break;
-        case 'created':
-          context
-              .read<TaskCubit>()
-              .fetchTasks(filterBy: 'created', userId: _userId);
-          break;
-        case 'mine':
-          context
-              .read<TaskCubit>()
-              .fetchTasks(filterBy: 'mine', userId: _userId);
-          break;
-      }
+    _fetchTasks(reset: true);
+  }
+
+  void _fetchTasks({bool reset = false}) {
+    if (_userId == null) return;
+    if (reset) {
+      setState(() {
+        _offset = 0;
+        _hasMore = true;
+        _tasks = [];
+      });
     }
+    context.read<TaskCubit>().fetchTasks(
+          filterBy: _filter == 'all' ? null : _filter,
+          userId: _userId,
+          limit: _pageSize,
+          offset: _offset,
+        );
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return BlocListener<UserCubit, UserState>(
+      listener: (context, state) {
+        if (state is UserCreated) {
+          _userId = state.userRow['id'];
+          if (!_fetchedOnce) {
+            _fetchedOnce = true;
+            context.read<TaskCubit>().fetchTasks(filterBy: _filter, userId: _userId);
+          }
+        }
+      },
+      child: Scaffold(
       backgroundColor: const Color(0xFFF7F8FA),
       appBar: AppBar(
         title: const Text(
@@ -83,6 +100,18 @@ class _TaskListScreenState extends State<TaskListScreen> {
               ),
             ),
           ),
+          IconButton(
+            tooltip: 'Sign out',
+            icon: const Icon(Icons.logout),
+            onPressed: () async {
+              await context.read<UserCubit>().signOut();
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Signed out')),
+                );
+              }
+            },
+          ),
         ],
       ),
       body: Column(
@@ -95,17 +124,30 @@ class _TaskListScreenState extends State<TaskListScreen> {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(content: Text(state.message)),
                   );
+                  setState(() {
+                    _isLoadingMore = false;
+                  });
+                } else if (state is TasksLoaded) {
+                  setState(() {
+                    if (_offset == 0) {
+                      _tasks = state.tasks;
+                    } else {
+                      // Append and deduplicate by id
+                      final existingIds = _tasks.map((t) => t.id).toSet();
+                      final newOnes = state.tasks.where((t) => !existingIds.contains(t.id));
+                      _tasks.addAll(newOnes);
+                    }
+                    _hasMore = state.tasks.length >= _pageSize;
+                    _isLoadingMore = false;
+                  });
                 }
               },
               builder: (context, state) {
-                if (state is TaskLoading) {
+                if (state is TaskLoading && _tasks.isEmpty) {
                   return const Center(child: CircularProgressIndicator());
-                } else if (state is TasksLoaded) {
-                  final tasks = state.tasks;
-                  if (tasks.isEmpty) return _buildEmptyState();
-                  return _buildTaskList(tasks);
                 }
-                return const Center(child: Text('No tasks available.'));
+                if (_tasks.isEmpty) return _buildEmptyState();
+                return _buildTaskList(_tasks);
               },
             ),
           ),
@@ -122,6 +164,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
           ).then((_) => _applyFilter(_filter));
         },
       ),
+    ),
     );
   }
 
@@ -217,8 +260,34 @@ class _TaskListScreenState extends State<TaskListScreen> {
         constraints: const BoxConstraints(maxWidth: 800),
         child: ListView.builder(
           padding: const EdgeInsets.all(20),
-          itemCount: tasks.length,
+          itemCount: tasks.length + (_hasMore ? 1 : 0),
           itemBuilder: (context, index) {
+            if (_hasMore && index == tasks.length) {
+              // Load more row
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12.0),
+                child: Center(
+                  child: _isLoadingMore
+                      ? const SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(),
+                        )
+                      : OutlinedButton.icon(
+                          icon: const Icon(Icons.expand_more),
+                          label: const Text('Load more'),
+                          onPressed: () {
+                            setState(() {
+                              _isLoadingMore = true;
+                              _offset += _pageSize;
+                            });
+                            _fetchTasks();
+                          },
+                        ),
+                ),
+              );
+            }
+
             final task = tasks[index];
             return AnimatedContainer(
               duration: const Duration(milliseconds: 250),

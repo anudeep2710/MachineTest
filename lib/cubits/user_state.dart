@@ -7,6 +7,9 @@ abstract class UserState extends Equatable {
 
 class UserInitial extends UserState {}
 
+/// Emitted while restoring a previously saved local session
+class UserRestoring extends UserState {}
+
 class UserLoading extends UserState {}
 
 class UserCreated extends UserState {

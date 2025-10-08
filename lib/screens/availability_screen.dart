@@ -18,14 +18,14 @@ class _AvailabilityScreenState extends State<AvailabilityScreen> {
   @override
   void initState() {
     super.initState();
-
-    Future.delayed(const Duration(milliseconds: 300), () {
-      final userState = context.read<UserCubit>().state;
-      if (userState is UserCreated) {
-        userId = userState.userRow['id'];
-        context.read<AvailabilityCubit>().fetchAvailabilities(userId!);
-      }
-    });
+    // Read current user state immediately to avoid race conditions
+    // where BlocListener might not fire if state was already emitted.
+    final current = context.read<UserCubit>().state;
+    if (current is UserCreated) {
+      userId = current.userRow['id'];
+      // Fetch existing availability for this user
+      context.read<AvailabilityCubit>().fetchAvailabilities(userId!);
+    }
   }
 
   void _showAddEditDialog({Availability? existing}) {
@@ -157,7 +157,14 @@ class _AvailabilityScreenState extends State<AvailabilityScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return BlocListener<UserCubit, UserState>(
+      listener: (context, state) {
+        if (state is UserCreated) {
+          userId = state.userRow['id'];
+          context.read<AvailabilityCubit>().fetchAvailabilities(userId!);
+        }
+      },
+      child: Scaffold(
       appBar: AppBar(
         title: const Text('My Availability'),
         centerTitle: true,
@@ -192,6 +199,7 @@ class _AvailabilityScreenState extends State<AvailabilityScreen> {
         icon: const Icon(Icons.add),
         label: const Text('Add Slot'),
       ),
+    ),
     );
   }
 

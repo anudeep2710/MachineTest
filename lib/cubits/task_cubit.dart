@@ -5,39 +5,51 @@ import 'package:equatable/equatable.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/task.dart';
 import '../models/availability.dart';
+import '../utils/availability_utils.dart';
 
 part 'task_state.dart';
 
 class TaskCubit extends Cubit<TaskState> {
-  TaskCubit() : super(TaskInitial());
+  TaskCubit({SupabaseClient? client})
+      : _client = client ?? Supabase.instance.client,
+        super(TaskInitial());
 
-  final _client = Supabase.instance.client;
+  final SupabaseClient _client;
 
   // Fetch all tasks
-  Future<void> fetchTasks({String? filterBy, String? userId}) async {
+  Future<void> fetchTasks({String? filterBy, String? userId, int limit = 20, int offset = 0}) async {
     emit(TaskLoading());
     try {
-      var query = _client.from('tasks').select('*, task_collaborators(user_id)');
-      
+      var query = _client
+          .from('tasks')
+          .select('*, task_collaborators(user_id)')
+          .order('created_at', ascending: false)
+          .range(offset, offset + limit - 1);
+
       // Apply filters if provided
       if (filterBy == 'created' && userId != null) {
-        query = query.eq('created_by', userId);
+        query = _client
+          .from('tasks')
+          .select('*, task_collaborators(user_id)')
+          .eq('created_by', userId)
+          .order('created_at', ascending: false)
+          .range(offset, offset + limit - 1);
       }
-      
-      final resp = await query.order('created_at', ascending: false);
-      
+
+      final resp = await query;
+
       if (resp == null) {
         emit(const TaskError('No data returned'));
         return;
       }
 
       final tasks = await _processTasksResponse(resp);
-      
+
       // Filter tasks where user is a collaborator
       if (filterBy == 'mine' && userId != null) {
-        final filteredTasks = tasks.where((task) => 
-          task.collaboratorIds.contains(userId) || task.createdBy == userId
-        ).toList();
+        final filteredTasks = tasks
+            .where((task) => task.collaboratorIds.contains(userId) || task.createdBy == userId)
+            .toList();
         emit(TasksLoaded(filteredTasks));
       } else {
         emit(TasksLoaded(tasks));
@@ -50,21 +62,21 @@ class TaskCubit extends Cubit<TaskState> {
   // Process tasks response and fetch collaborators
   Future<List<Task>> _processTasksResponse(List<dynamic> resp) async {
     final tasks = <Task>[];
-    
+
     for (final item in resp) {
       final taskData = Map<String, dynamic>.from(item);
       final collaborators = <String>[];
-      
+
       // Extract collaborator IDs
       if (taskData['task_collaborators'] != null) {
         for (final collab in taskData['task_collaborators']) {
           collaborators.add(collab['user_id'].toString());
         }
       }
-      
+
       tasks.add(Task.fromJson(taskData, collaborators: collaborators));
     }
-    
+
     return tasks;
   }
 
@@ -87,24 +99,25 @@ class TaskCubit extends Cubit<TaskState> {
         'start_time': startTime?.toUtc().toIso8601String(),
         'end_time': endTime?.toUtc().toIso8601String(),
       };
-      
+
       final taskResp = await _client.from('tasks').insert(taskData).select().single();
-      
+
       if (taskResp == null) {
         emit(const TaskError('Failed to create task'));
         return;
       }
-      
+
       final taskId = taskResp['id'].toString();
-      
-      // Add collaborators
-      for (final userId in collaboratorIds) {
-        await _client.from('task_collaborators').insert({
-          'task_id': taskId,
-          'user_id': userId,
-        });
+
+      // Add collaborators (bulk insert for efficiency)
+      if (collaboratorIds.isNotEmpty) {
+        final rows = collaboratorIds.map((u) => {
+              'task_id': taskId,
+              'user_id': u,
+            });
+        await _client.from('task_collaborators').insert(rows.toList());
       }
-      
+
       emit(const TaskOperationSuccess('Task created successfully'));
     } catch (e) {
       emit(TaskError(e.toString()));
@@ -123,19 +136,44 @@ class TaskCubit extends Cubit<TaskState> {
       // Default date range is today to 7 days from now if not specified
       final now = DateTime.now();
       final start = startDate ?? DateTime(now.year, now.month, now.day);
-      final end = endDate ?? start.add(const Duration(days: 7));
-      
+      // Make the search window inclusive through the end of the 7th day
+      final inclusiveEndBase = endDate ?? start.add(const Duration(days: 7));
+      final end = DateTime(
+        inclusiveEndBase.year,
+        inclusiveEndBase.month,
+        inclusiveEndBase.day,
+        23,
+        59,
+        59,
+        999,
+      );
+
       // Fetch all availabilities for the collaborators
       final availabilities = await _fetchCollaboratorsAvailability(collaboratorIds, start, end);
-      
+
       if (availabilities.isEmpty) {
         emit(const AvailableSlotsLoaded([]));
         return;
       }
-      
-      // Find common available slots
-      final slots = _findCommonSlots(availabilities, durationMinutes);
-      emit(AvailableSlotsLoaded(slots));
+
+      // Build user -> slots map for utility function
+      final Map<String, List<Map<String, DateTime>>> map = {};
+      for (final a in availabilities) {
+        map.putIfAbsent(a.userId, () => []);
+        map[a.userId]!.add({'start': a.startTime, 'end': a.endTime});
+      }
+
+      final slots = findCommonAvailableSlots(
+        availabilities: map,
+        durationMinutes: durationMinutes,
+      );
+
+      // Convert to dynamic map for state
+      final dynamicSlots = slots
+          .map<Map<String, dynamic>>((s) => {'start': s['start']!, 'end': s['end']!})
+          .toList();
+
+      emit(AvailableSlotsLoaded(dynamicSlots));
     } catch (e) {
       emit(TaskError(e.toString()));
     }
@@ -148,110 +186,25 @@ class TaskCubit extends Cubit<TaskState> {
     DateTime end,
   ) async {
     final availabilities = <Availability>[];
-    
+
     for (final userId in userIds) {
+      // Fetch any availability that OVERLAPS the requested window:
+      // end_time >= start AND start_time <= end
       final resp = await _client
           .from('availability')
           .select()
           .eq('user_id', userId)
-          .gte('start_time', start.toUtc().toIso8601String())
-          .lte('end_time', end.toUtc().toIso8601String());
-      
+          .gte('end_time', start.toUtc().toIso8601String())
+          .lte('start_time', end.toUtc().toIso8601String())
+          .order('start_time');
+
       if (resp != null) {
         for (final item in resp) {
-          availabilities.add(
-            Availability.fromJson(Map<String, dynamic>.from(item))
-          );
+          availabilities.add(Availability.fromJson(Map<String, dynamic>.from(item)));
         }
       }
     }
-    
+
     return availabilities;
-  }
-
-  // Find common available time slots
-  List<Map<String, dynamic>> _findCommonSlots(
-    List<Availability> availabilities,
-    int durationMinutes,
-  ) {
-    if (availabilities.isEmpty) {
-      return [];
-    }
-
-    // Group availabilities by user
-    final userAvailabilities = <String, List<Availability>>{};
-    for (final avail in availabilities) {
-      if (!userAvailabilities.containsKey(avail.userId)) {
-        userAvailabilities[avail.userId] = [];
-      }
-      userAvailabilities[avail.userId]!.add(avail);
-    }
-    
-    // If any user has no availability, return empty list
-    if (userAvailabilities.values.any((list) => list.isEmpty)) {
-      return [];
-    }
-    
-    // Find overlapping time slots
-    final slots = <Map<String, dynamic>>[];
-    final userIds = userAvailabilities.keys.toList();
-    
-    // Start with the first user's availability
-    final firstUserSlots = userAvailabilities[userIds.first]!;
-    
-    for (final slot in firstUserSlots) {
-      var start = slot.startTime;
-      var end = slot.endTime;
-      
-      // Check if this slot overlaps with all other users' availability
-      var isCommonSlot = true;
-      
-      for (int i = 1; i < userIds.length; i++) {
-        final userId = userIds[i];
-        final userSlots = userAvailabilities[userId]!;
-        
-        // Check if any of this user's slots overlap with our current slot
-        var hasOverlap = false;
-        DateTime? overlapStart;
-        DateTime? overlapEnd;
-        
-        for (final userSlot in userSlots) {
-          // Find overlap
-          if (userSlot.endTime.isAfter(start) && userSlot.startTime.isBefore(end)) {
-            overlapStart = userSlot.startTime.isAfter(start) ? userSlot.startTime : start;
-            overlapEnd = userSlot.endTime.isBefore(end) ? userSlot.endTime : end;
-            
-            // Check if overlap is long enough
-            if (overlapEnd.difference(overlapStart).inMinutes >= durationMinutes) {
-              hasOverlap = true;
-              start = overlapStart;
-              end = overlapEnd;
-              break;
-            }
-          }
-        }
-        
-        if (!hasOverlap) {
-          isCommonSlot = false;
-          break;
-        }
-      }
-      
-      // If we found a common slot, add it to results
-      if (isCommonSlot) {
-        // Break down the slot into chunks of the requested duration
-        var slotStart = start;
-        while (end.difference(slotStart).inMinutes >= durationMinutes) {
-          final slotEnd = slotStart.add(Duration(minutes: durationMinutes));
-          slots.add({
-            'start': slotStart,
-            'end': slotEnd,
-          });
-          slotStart = slotEnd;
-        }
-      }
-    }
-    
-    return slots;
   }
 }
