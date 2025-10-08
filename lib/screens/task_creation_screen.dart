@@ -18,10 +18,11 @@ class _TaskCreationScreenState extends State<TaskCreationScreen> {
   final List<Map<String, dynamic>> _users = [];
   final List<String> _selectedUserIds = [];
   int _currentStep = 0;
-  int _durationMinutes = 30; // Default duration
+  int _durationMinutes = 30;
   List<Map<String, dynamic>> _availableSlots = [];
   Map<String, dynamic>? _selectedSlot;
   String? _userId;
+  bool _isLoadingSlots = false;
 
   final List<int> _availableDurations = [10, 15, 30, 60];
 
@@ -29,7 +30,7 @@ class _TaskCreationScreenState extends State<TaskCreationScreen> {
   void initState() {
     super.initState();
     _fetchUsers();
-    
+
     final userState = context.read<UserCubit>().state;
     if (userState is UserCreated) {
       _userId = userState.userRow['id'];
@@ -48,7 +49,6 @@ class _TaskCreationScreenState extends State<TaskCreationScreen> {
     try {
       final client = Supabase.instance.client;
       final response = await client.from('users').select();
-      
       if (response != null) {
         setState(() {
           _users.clear();
@@ -113,27 +113,31 @@ class _TaskCreationScreenState extends State<TaskCreationScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFF7F8FA),
       appBar: AppBar(
-        title: const Text('Create Task'),
+        title: const Text(
+          'Create Task',
+          style: TextStyle(fontWeight: FontWeight.w600),
+        ),
         centerTitle: true,
+        elevation: 1,
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black87,
       ),
       body: BlocConsumer<TaskCubit, TaskState>(
         listener: (context, state) {
           if (state is TaskError) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text(state.message)),
-            );
+            ScaffoldMessenger.of(context)
+                .showSnackBar(SnackBar(content: Text(state.message)));
           } else if (state is TaskOperationSuccess) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text(state.message)),
-            );
+            ScaffoldMessenger.of(context)
+                .showSnackBar(SnackBar(content: Text(state.message)));
             Navigator.pop(context);
           } else if (state is AvailableSlotsLoaded) {
             setState(() {
+              _isLoadingSlots = false;
               _availableSlots = state.slots;
-              if (_availableSlots.isNotEmpty) {
-                _currentStep = 3; // Move to slot selection step
-              }
+              _currentStep = 3; // move to slot selection
             });
           }
         },
@@ -141,93 +145,182 @@ class _TaskCreationScreenState extends State<TaskCreationScreen> {
           if (state is TaskLoading || state is TaskOperationInProgress) {
             return const Center(child: CircularProgressIndicator());
           }
-          
-          return Stepper(
-            currentStep: _currentStep,
-            onStepContinue: () {
-              if (_currentStep == 0) {
-                if (_titleController.text.isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Please enter a task title')),
-                  );
-                  return;
-                }
-                setState(() => _currentStep = 1);
-              } else if (_currentStep == 1) {
-                if (_selectedUserIds.isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Please select at least one collaborator')),
-                  );
-                  return;
-                }
-                setState(() => _currentStep = 2);
-              } else if (_currentStep == 2) {
-                _findAvailableSlots();
-              } else if (_currentStep == 3) {
-                if (_selectedSlot == null) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Please select a time slot')),
-                  );
-                  return;
-                }
-                _createTask();
-              }
-            },
-            onStepCancel: () {
-              if (_currentStep > 0) {
-                setState(() => _currentStep--);
-              } else {
-                Navigator.pop(context);
-              }
-            },
-            steps: [
-              Step(
-                title: const Text('Task Details'),
-                content: _buildTaskDetailsStep(),
-                isActive: _currentStep >= 0,
+
+          return Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 700),
+              child: Container(
+                margin: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.grey.withOpacity(0.1),
+                      blurRadius: 8,
+                      spreadRadius: 2,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Stepper(
+                  currentStep: _currentStep,
+                  type: StepperType.vertical,
+                  margin: EdgeInsets.zero,
+                  elevation: 0,
+                  onStepContinue: _onContinue,
+                  onStepCancel: _onCancel,
+                  controlsBuilder: _controlsBuilder,
+                  steps: [
+                    Step(
+                      title: const Text('Task Details'),
+                      content: _buildTaskDetailsStep(),
+                      isActive: _currentStep >= 0,
+                    ),
+                    Step(
+                      title: const Text('Choose Collaborators'),
+                      content: _buildCollaboratorsStep(),
+                      isActive: _currentStep >= 1,
+                    ),
+                    Step(
+                      title: const Text('Choose Duration'),
+                      content: _buildDurationStep(),
+                      isActive: _currentStep >= 2,
+                    ),
+                    Step(
+                      title: const Text('Choose Available Slot'),
+                      content: _buildSlotSelectionStep(),
+                      isActive: _currentStep >= 3,
+                    ),
+                  ],
+                ),
               ),
-              Step(
-                title: const Text('Choose Collaborators'),
-                content: _buildCollaboratorsStep(),
-                isActive: _currentStep >= 1,
-              ),
-              Step(
-                title: const Text('Choose Duration'),
-                content: _buildDurationStep(),
-                isActive: _currentStep >= 2,
-              ),
-              Step(
-                title: const Text('Choose Available Slot'),
-                content: _buildSlotSelectionStep(),
-                isActive: _currentStep >= 3,
-              ),
-            ],
+            ),
           );
         },
       ),
     );
   }
 
+  // --------------------------
+  // Stepper Logic
+  // --------------------------
+  void _onContinue() {
+    if (_currentStep == 0 && _titleController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter a task title')),
+      );
+      return;
+    } else if (_currentStep == 1 && _selectedUserIds.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select at least one collaborator')),
+      );
+      return;
+    } else if (_currentStep == 2) {
+      setState(() => _isLoadingSlots = true);
+      _findAvailableSlots();
+      return;
+    } else if (_currentStep == 3 && _selectedSlot == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select a time slot')),
+      );
+      return;
+    }
+
+    if (_currentStep < 3) {
+      setState(() => _currentStep++);
+    } else {
+      _createTask();
+    }
+  }
+
+  void _onCancel() {
+    if (_currentStep > 0) {
+      setState(() => _currentStep--);
+    } else {
+      Navigator.pop(context);
+    }
+  }
+
+  // --------------------------
+  // UI Builders
+  // --------------------------
+  Widget _controlsBuilder(BuildContext context, ControlsDetails details) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 24.0),
+      child: Row(
+        children: [
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.indigo,
+              foregroundColor: Colors.white,
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            onPressed: details.onStepContinue,
+            child: Text(_currentStep == 3 ? 'Create Task' : 'Continue'),
+          ),
+          const SizedBox(width: 12),
+          OutlinedButton(
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Colors.indigo,
+              side: const BorderSide(color: Colors.indigo),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            onPressed: details.onStepCancel,
+            child: Text(_currentStep == 0 ? 'Cancel' : 'Back'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildTaskDetailsStep() {
-    return Column(
-      children: [
-        TextField(
-          controller: _titleController,
-          decoration: InputDecoration(
-            labelText: 'Title',
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TextField(
+            controller: _titleController,
+            decoration: InputDecoration(
+              labelText: 'Title',
+              labelStyle: const TextStyle(fontWeight: FontWeight.w500),
+              filled: true,
+              fillColor: Colors.grey.shade50,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+            ),
           ),
-        ),
-        const SizedBox(height: 16),
-        TextField(
-          controller: _descriptionController,
-          decoration: InputDecoration(
-            labelText: 'Description',
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _descriptionController,
+            maxLines: 3,
+            decoration: InputDecoration(
+              labelText: 'Description',
+              labelStyle: const TextStyle(fontWeight: FontWeight.w500),
+              filled: true,
+              fillColor: Colors.grey.shade50,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+            ),
           ),
-          maxLines: 3,
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -251,7 +344,6 @@ class _TaskCreationScreenState extends State<TaskCreationScreen> {
               final user = _users[index];
               final userId = user['id'].toString();
               final isSelected = _selectedUserIds.contains(userId);
-              
               return CheckboxListTile(
                 title: Text(user['name'] ?? 'Unknown User'),
                 subtitle: Text('User ID: ${userId.substring(0, 8)}...'),
@@ -271,9 +363,7 @@ class _TaskCreationScreenState extends State<TaskCreationScreen> {
                     ? CircleAvatar(
                         backgroundImage: NetworkImage(user['photo_url']),
                       )
-                    : const CircleAvatar(
-                        child: Icon(Icons.person),
-                      ),
+                    : const CircleAvatar(child: Icon(Icons.person)),
               );
             },
           ),
@@ -315,22 +405,27 @@ class _TaskCreationScreenState extends State<TaskCreationScreen> {
   }
 
   Widget _buildSlotSelectionStep() {
+    if (_isLoadingSlots) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
     if (_availableSlots.isEmpty) {
       return const Center(
         child: Padding(
           padding: EdgeInsets.all(16.0),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.warning_amber_rounded, size: 48, color: Colors.amber),
+              Icon(Icons.warning_amber_rounded,
+                  size: 48, color: Colors.amber),
               SizedBox(height: 16),
               Text(
                 'No available slots found',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                style:
+                    TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
               SizedBox(height: 8),
               Text(
-                'The selected collaborators don\'t have common availability for the requested duration.',
+                'The selected collaborators don’t have common availability for the requested duration.',
                 textAlign: TextAlign.center,
               ),
             ],
@@ -356,7 +451,7 @@ class _TaskCreationScreenState extends State<TaskCreationScreen> {
             final start = slot['start'] as DateTime;
             final end = slot['end'] as DateTime;
             final isSelected = _selectedSlot == slot;
-            
+
             return RadioListTile<Map<String, dynamic>>(
               title: Text(
                 '${DateFormat('EEE, MMM d').format(start)} • ${DateFormat('HH:mm').format(start)} - ${DateFormat('HH:mm').format(end)}',

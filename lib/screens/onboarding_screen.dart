@@ -197,7 +197,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                                     ),
                                   )
                                 : const Text(
-                                    'Create Account',
+                                    'Continue',
                                     style: TextStyle(
                                         fontWeight: FontWeight.w600,
                                         color: Colors.white),

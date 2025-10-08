@@ -187,7 +187,7 @@ class _AvailabilityScreenState extends State<AvailabilityScreen> {
         },
       ),
       floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: Colors.indigo,
+        backgroundColor: Colors.white,
         onPressed: () => _showAddEditDialog(),
         icon: const Icon(Icons.add),
         label: const Text('Add Slot'),
@@ -248,4 +248,3 @@ class _AvailabilityScreenState extends State<AvailabilityScreen> {
 }
 
   }
-
