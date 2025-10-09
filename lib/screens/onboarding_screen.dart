@@ -53,7 +53,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     final double avatarSize = isWide ? 80 : 60;
 
     return Scaffold(
-      resizeToAvoidBottomInset: true,
       appBar: AppBar(
         title: const Text(
           'Create Profile',
@@ -67,13 +66,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       backgroundColor: const Color(0xFFF7F8FA),
       body: Center(
         child: SingleChildScrollView(
-          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-          padding: EdgeInsets.only(
-            left: 24,
-            right: 24,
-            top: 24,
-            bottom: MediaQuery.of(context).viewInsets.bottom + 24,
-          ),
+          padding: const EdgeInsets.all(24),
           child: ConstrainedBox(
             constraints: BoxConstraints(maxWidth: cardWidth),
             child: BlocConsumer<UserCubit, UserState>(
@@ -176,8 +169,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                         const SizedBox(height: 32),
                         TextField(
                           controller: _nameController,
-                          textInputAction: TextInputAction.done,
-                          scrollPadding: const EdgeInsets.only(bottom: 120),
                           decoration: InputDecoration(
                             labelText: 'Full Name',
                             prefixIcon: const Icon(Icons.person_outline),

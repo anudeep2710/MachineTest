@@ -113,7 +113,6 @@ class _TaskCreationScreenState extends State<TaskCreationScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      resizeToAvoidBottomInset: true,
       backgroundColor: const Color(0xFFF7F8FA),
       appBar: AppBar(
         title: const Text(
@@ -151,70 +150,58 @@ class _TaskCreationScreenState extends State<TaskCreationScreen> {
             builder: (context, constraints) {
               final isMobile = constraints.maxWidth < 600;
 
-              final contentWidth = isMobile ? constraints.maxWidth : 700.0;
               return Center(
-                child: SingleChildScrollView(
-                  keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-                  padding: EdgeInsets.only(
-                    bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+                child: Container(
+                  width: isMobile ? double.infinity : 700,
+                  margin: EdgeInsets.symmetric(
+                    vertical: isMobile ? 16 : 24,
+                    horizontal: isMobile ? 12 : 24,
                   ),
-                  child: Align(
-                    alignment: Alignment.topCenter,
-                    child: SizedBox(
-                      width: contentWidth,
-                      child: Container(
-                        margin: EdgeInsets.symmetric(
-                          vertical: isMobile ? 16 : 24,
-                          horizontal: isMobile ? 12 : 24,
-                        ),
-                        padding: EdgeInsets.all(isMobile ? 16 : 24),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(16),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.grey.withOpacity(0.1),
-                              blurRadius: 8,
-                              spreadRadius: 2,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: Stepper(
-                          type: isMobile
-                              ? StepperType.vertical
-                              : StepperType.horizontal,
-                          margin: EdgeInsets.zero,
-                          elevation: 0,
-                          currentStep: _currentStep,
-                          onStepContinue: _onContinue,
-                          onStepCancel: _onCancel,
-                          controlsBuilder: _controlsBuilder,
-                          steps: [
-                            Step(
-                              title: const Text('Task Details'),
-                              content: _buildTaskDetailsStep(),
-                              isActive: _currentStep >= 0,
-                            ),
-                            Step(
-                              title: const Text('Collaborators'),
-                              content: _buildCollaboratorsStep(),
-                              isActive: _currentStep >= 1,
-                            ),
-                            Step(
-                              title: const Text('Duration'),
-                              content: _buildDurationStep(),
-                              isActive: _currentStep >= 2,
-                            ),
-                            Step(
-                              title: const Text('Available Slot'),
-                              content: _buildSlotSelectionStep(),
-                              isActive: _currentStep >= 3,
-                            ),
-                          ],
-                        ),
+                  padding: EdgeInsets.all(isMobile ? 16 : 24),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.grey.withOpacity(0.1),
+                        blurRadius: 8,
+                        spreadRadius: 2,
+                        offset: const Offset(0, 2),
                       ),
-                    ),
+                    ],
+                  ),
+                  child: Stepper(
+                    type: isMobile
+                        ? StepperType.vertical
+                        : StepperType.horizontal,
+                    margin: EdgeInsets.zero,
+                    elevation: 0,
+                    currentStep: _currentStep,
+                    onStepContinue: _onContinue,
+                    onStepCancel: _onCancel,
+                    controlsBuilder: _controlsBuilder,
+                    steps: [
+                      Step(
+                        title: const Text('Task Details'),
+                        content: _buildTaskDetailsStep(),
+                        isActive: _currentStep >= 0,
+                      ),
+                      Step(
+                        title: const Text('Collaborators'),
+                        content: _buildCollaboratorsStep(),
+                        isActive: _currentStep >= 1,
+                      ),
+                      Step(
+                        title: const Text('Duration'),
+                        content: _buildDurationStep(),
+                        isActive: _currentStep >= 2,
+                      ),
+                      Step(
+                        title: const Text('Available Slot'),
+                        content: _buildSlotSelectionStep(),
+                        isActive: _currentStep >= 3,
+                      ),
+                    ],
                   ),
                 ),
               );
@@ -325,8 +312,6 @@ class _TaskCreationScreenState extends State<TaskCreationScreen> {
       children: [
         TextField(
           controller: _titleController,
-          textInputAction: TextInputAction.next,
-          scrollPadding: const EdgeInsets.only(bottom: 120),
           decoration: InputDecoration(
             labelText: 'Title',
             labelStyle: const TextStyle(fontWeight: FontWeight.w500),
@@ -343,8 +328,6 @@ class _TaskCreationScreenState extends State<TaskCreationScreen> {
         TextField(
           controller: _descriptionController,
           maxLines: 3,
-          textInputAction: TextInputAction.done,
-          scrollPadding: const EdgeInsets.only(bottom: 120),
           decoration: InputDecoration(
             labelText: 'Description',
             labelStyle: const TextStyle(fontWeight: FontWeight.w500),
