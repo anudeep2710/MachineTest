@@ -73,9 +73,9 @@ class _TaskCreationScreenState extends State<TaskCreationScreen> {
     }
 
     context.read<TaskCubit>().findAvailableSlots(
-      collaboratorIds: _selectedUserIds,
-      durationMinutes: _durationMinutes,
-    );
+          collaboratorIds: _selectedUserIds,
+          durationMinutes: _durationMinutes,
+        );
   }
 
   void _createTask() {
@@ -101,18 +101,19 @@ class _TaskCreationScreenState extends State<TaskCreationScreen> {
     }
 
     context.read<TaskCubit>().createTask(
-      title: _titleController.text,
-      description: _descriptionController.text,
-      createdBy: _userId!,
-      collaboratorIds: _selectedUserIds,
-      startTime: _selectedSlot!['start'],
-      endTime: _selectedSlot!['end'],
-    );
+          title: _titleController.text,
+          description: _descriptionController.text,
+          createdBy: _userId!,
+          collaboratorIds: _selectedUserIds,
+          startTime: _selectedSlot!['start'],
+          endTime: _selectedSlot!['end'],
+        );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      resizeToAvoidBottomInset: true,
       backgroundColor: const Color(0xFFF7F8FA),
       appBar: AppBar(
         title: const Text(
@@ -137,7 +138,7 @@ class _TaskCreationScreenState extends State<TaskCreationScreen> {
             setState(() {
               _isLoadingSlots = false;
               _availableSlots = state.slots;
-              _currentStep = 3; // move to slot selection
+              _currentStep = 3;
             });
           }
         },
@@ -146,57 +147,78 @@ class _TaskCreationScreenState extends State<TaskCreationScreen> {
             return const Center(child: CircularProgressIndicator());
           }
 
-          return Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 700),
-              child: Container(
-                margin: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.grey.withOpacity(0.1),
-                      blurRadius: 8,
-                      spreadRadius: 2,
-                      offset: const Offset(0, 2),
+          return LayoutBuilder(
+            builder: (context, constraints) {
+              final isMobile = constraints.maxWidth < 600;
+
+              final contentWidth = isMobile ? constraints.maxWidth : 700.0;
+              return Center(
+                child: SingleChildScrollView(
+                  keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                  padding: EdgeInsets.only(
+                    bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+                  ),
+                  child: Align(
+                    alignment: Alignment.topCenter,
+                    child: SizedBox(
+                      width: contentWidth,
+                      child: Container(
+                        margin: EdgeInsets.symmetric(
+                          vertical: isMobile ? 16 : 24,
+                          horizontal: isMobile ? 12 : 24,
+                        ),
+                        padding: EdgeInsets.all(isMobile ? 16 : 24),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.grey.withOpacity(0.1),
+                              blurRadius: 8,
+                              spreadRadius: 2,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: Stepper(
+                          type: isMobile
+                              ? StepperType.vertical
+                              : StepperType.horizontal,
+                          margin: EdgeInsets.zero,
+                          elevation: 0,
+                          currentStep: _currentStep,
+                          onStepContinue: _onContinue,
+                          onStepCancel: _onCancel,
+                          controlsBuilder: _controlsBuilder,
+                          steps: [
+                            Step(
+                              title: const Text('Task Details'),
+                              content: _buildTaskDetailsStep(),
+                              isActive: _currentStep >= 0,
+                            ),
+                            Step(
+                              title: const Text('Collaborators'),
+                              content: _buildCollaboratorsStep(),
+                              isActive: _currentStep >= 1,
+                            ),
+                            Step(
+                              title: const Text('Duration'),
+                              content: _buildDurationStep(),
+                              isActive: _currentStep >= 2,
+                            ),
+                            Step(
+                              title: const Text('Available Slot'),
+                              content: _buildSlotSelectionStep(),
+                              isActive: _currentStep >= 3,
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
-                  ],
+                  ),
                 ),
-                child: Stepper(
-                  currentStep: _currentStep,
-                  type: StepperType.vertical,
-                  margin: EdgeInsets.zero,
-                  elevation: 0,
-                  onStepContinue: _onContinue,
-                  onStepCancel: _onCancel,
-                  controlsBuilder: _controlsBuilder,
-                  steps: [
-                    Step(
-                      title: const Text('Task Details'),
-                      content: _buildTaskDetailsStep(),
-                      isActive: _currentStep >= 0,
-                    ),
-                    Step(
-                      title: const Text('Choose Collaborators'),
-                      content: _buildCollaboratorsStep(),
-                      isActive: _currentStep >= 1,
-                    ),
-                    Step(
-                      title: const Text('Choose Duration'),
-                      content: _buildDurationStep(),
-                      isActive: _currentStep >= 2,
-                    ),
-                    Step(
-                      title: const Text('Choose Available Slot'),
-                      content: _buildSlotSelectionStep(),
-                      isActive: _currentStep >= 3,
-                    ),
-                  ],
-                ),
-              ),
-            ),
+              );
+            },
           );
         },
       ),
@@ -244,83 +266,98 @@ class _TaskCreationScreenState extends State<TaskCreationScreen> {
   }
 
   // --------------------------
-  // UI Builders
+  // Responsive Controls Builder
   // --------------------------
   Widget _controlsBuilder(BuildContext context, ControlsDetails details) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isMobile = screenWidth < 600;
+
     return Padding(
       padding: const EdgeInsets.only(top: 24.0),
-      child: Row(
+      child: Wrap(
+        spacing: 12,
+        runSpacing: 8,
+        alignment: WrapAlignment.start,
         children: [
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.indigo,
-              foregroundColor: Colors.white,
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
+          SizedBox(
+            width: isMobile ? double.infinity : null,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.indigo,
+                foregroundColor: Colors.white,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
               ),
+              onPressed: details.onStepContinue,
+              child: Text(_currentStep == 3 ? 'Create Task' : 'Continue'),
             ),
-            onPressed: details.onStepContinue,
-            child: Text(_currentStep == 3 ? 'Create Task' : 'Continue'),
           ),
-          const SizedBox(width: 12),
-          OutlinedButton(
-            style: OutlinedButton.styleFrom(
-              foregroundColor: Colors.indigo,
-              side: const BorderSide(color: Colors.indigo),
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
+          SizedBox(
+            width: isMobile ? double.infinity : null,
+            child: OutlinedButton(
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.indigo,
+                side: const BorderSide(color: Colors.indigo),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
               ),
+              onPressed: details.onStepCancel,
+              child: Text(_currentStep == 0 ? 'Cancel' : 'Back'),
             ),
-            onPressed: details.onStepCancel,
-            child: Text(_currentStep == 0 ? 'Cancel' : 'Back'),
           ),
         ],
       ),
     );
   }
 
+  // --------------------------
+  // UI Builders
+  // --------------------------
   Widget _buildTaskDetailsStep() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          TextField(
-            controller: _titleController,
-            decoration: InputDecoration(
-              labelText: 'Title',
-              labelStyle: const TextStyle(fontWeight: FontWeight.w500),
-              filled: true,
-              fillColor: Colors.grey.shade50,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        TextField(
+          controller: _titleController,
+          textInputAction: TextInputAction.next,
+          scrollPadding: const EdgeInsets.only(bottom: 120),
+          decoration: InputDecoration(
+            labelText: 'Title',
+            labelStyle: const TextStyle(fontWeight: FontWeight.w500),
+            filled: true,
+            fillColor: Colors.grey.shade50,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
             ),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
           ),
-          const SizedBox(height: 16),
-          TextField(
-            controller: _descriptionController,
-            maxLines: 3,
-            decoration: InputDecoration(
-              labelText: 'Description',
-              labelStyle: const TextStyle(fontWeight: FontWeight.w500),
-              filled: true,
-              fillColor: Colors.grey.shade50,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        ),
+        const SizedBox(height: 16),
+        TextField(
+          controller: _descriptionController,
+          maxLines: 3,
+          textInputAction: TextInputAction.done,
+          scrollPadding: const EdgeInsets.only(bottom: 120),
+          decoration: InputDecoration(
+            labelText: 'Description',
+            labelStyle: const TextStyle(fontWeight: FontWeight.w500),
+            filled: true,
+            fillColor: Colors.grey.shade50,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
             ),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
@@ -420,8 +457,7 @@ class _TaskCreationScreenState extends State<TaskCreationScreen> {
               SizedBox(height: 16),
               Text(
                 'No available slots found',
-                style:
-                    TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
               SizedBox(height: 8),
               Text(
